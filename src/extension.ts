@@ -92,11 +92,30 @@ class DocumentationViewProvider implements vscode.WebviewViewProvider {
 		<link rel="stylesheet" href="${styleUri}">
 		<title>Documentation</title>
 	</head>
-
+	
+	<script>
+    document.addEventListener('DOMContentLoaded', () => {					//HTML has to be loaded
+        const searchBar = document.getElementById('search-bar');    		//Takes the input in the search-bar
+        
+        searchBar.addEventListener('input', () => {							//Listen the event input
+            const query = searchBar.value.toLowerCase();					//the typed text is converted to lowercase
+            const cards = document.querySelectorAll('.guideline-card');		//Takes the card of the HTML
+            cards.forEach(card => {											
+                const title = card.getAttribute('data-title');				//Takes the title of the card
+                if (title.includes(query)) {								//if the title contains the input of the search-bar the card remains visible, otherwise is hidden
+                    card.style.display = '';
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+        });
+    });
+	</script>
 
 	<body>
 	<div class ="container">
 		<h1>Documentation</h1>
+		<input type ="text" id="search-bar" placeholder="Search guidelines...>
 		<div id="guidelines-content">
 			${htmlContent}
 		</div>
