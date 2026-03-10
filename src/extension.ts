@@ -115,7 +115,7 @@ class DocumentationViewProvider implements vscode.WebviewViewProvider {
 	<body>
 	<div class ="container">
 		<h1>Documentation</h1>
-		<input type ="text" id="search-bar" placeholder="Search guidelines...>
+		<input type="text" id="search-bar" placeholder="Type to search guidelines...">
 		<div id="guidelines-content">
 			${htmlContent}
 		</div>
