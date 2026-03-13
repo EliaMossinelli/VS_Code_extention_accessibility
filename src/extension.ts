@@ -10,9 +10,9 @@ import * as dotenv from 'dotenv';
 // WEBVIEW PROVIDER FOR DOCUMENTATION VIEW
 class DocumentationViewProvider implements vscode.WebviewViewProvider {
 
-	public static readonly viewType = 'documentation';
+	public static readonly viewType = 'documentation'; //type of the sidebar, same of what is written in the JSON
 
-	constructor(private readonly _extensionUri: vscode.Uri) {
+	constructor(private readonly _extensionUri: vscode.Uri) {					  //extensionUri: route of the extension's folder, useful to find CSS and markdown
 		console.log('DocumentationViewProvider initialized with extension URI:'); //DEBUG
 	}
 
@@ -31,8 +31,7 @@ class DocumentationViewProvider implements vscode.WebviewViewProvider {
 		const styleUri = webviewView.webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'css', 'styles.css'));
 		const docPath = vscode.Uri.joinPath(this._extensionUri, 'css', 'Web_Design_guidelines.md');
 
-		// read the markdown file and convert it to HTML
-		const markdownContent = fs.readFileSync(docPath.fsPath, 'utf-8');
+		const markdownContent = fs.readFileSync(docPath.fsPath, 'utf-8'); // read the markdown file and convert it to HTML
 		const { marked } = await import('marked');
 		const tokens = marked.lexer(markdownContent); //lexer divides the markdown in token (titles, paragraphs, code pieces...)
 		// Divide tokens into sections, one per guideline
@@ -45,15 +44,15 @@ class DocumentationViewProvider implements vscode.WebviewViewProvider {
     	const isMarkdownHeading = token.type === 'heading' && token.depth === 3; //heading type token with ### (4-12)
 
     	if (isDetailsHeading || isMarkdownHeading) {
-        if (currentTitle != '') {
+        if (currentTitle != '') { //Each time a title is found, the previous section is finished so it's saved in sections. Marked.parser reassemble the tokens
             sections.push({
                 title: currentTitle,
-                html: marked.parser(currentTokens as any)
+                html: marked.parser(currentTokens as any) 
             });
         }
-        if (isDetailsHeading) {
+        if (isDetailsHeading) { 
             const titleMatch = token.raw.match(/<h3[^>]*>(.*?)<\/h3>/s);//regex, more info https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Regular_expressions
-            currentTitle = titleMatch ? titleMatch[1].trim() : 'Guideline';
+            currentTitle = titleMatch ? titleMatch[1].trim() : 'Guideline'; //trim removes spaces and newlines, titleMatch[0]=='<h3>Keyboard Navigation</h3>', titleMatch[1]=='Keyboard Navigation'
             currentTokens = [];
         } else {
             currentTitle = token.text;
@@ -64,7 +63,7 @@ class DocumentationViewProvider implements vscode.WebviewViewProvider {
     	}
 	}
 
-		// Push last section
+		// Push last section that isn't saved inside the loop because the loop is closed when the token are finished
 		if (currentTitle) {
     	sections.push({
         	title: currentTitle,
@@ -72,10 +71,10 @@ class DocumentationViewProvider implements vscode.WebviewViewProvider {
     		});
 		}
 
-		const htmlContent = sections.map(s => `
-    	<details class="guideline-card" data-title="${s.title.toLowerCase()}">
+		const htmlContent = sections.map(s => ` 																					<!-- each sections become a HTML string -->
+    	<details class="guideline-card" data-title="${s.title.toLowerCase()}">														<!-- data-title is an hidden attribute, toLowercase is useful for the search-bar -->
         <summary class="guideline-header">${s.title}</summary>
-        <div class="guideline-body">${s.html.replace(/<details[^>]*>[\s\S]*?<\/summary>/g, '').replace(/<\/details>/g, '')}</div>
+        <div class="guideline-body">${s.html.replace(/<details[^>]*>[\s\S]*?<\/summary>/g, '').replace(/<\/details>/g, '')}</div> 
     	</details>		
 		`).join('');
 		webviewView.webview.html = this.getWebviewContent(webviewView.webview, styleUri, htmlContent as string);
@@ -241,10 +240,6 @@ class AnalysisViewProvider implements vscode.WebviewViewProvider {
 				edit.replace(document.uri, range, message.suggested);
 				await vscode.workspace.applyEdit(edit);
 				vscode.window.showInformationMessage('Substitution applied successfully!');
-				//positionAt and getText:  https://code.visualstudio.com/api/references/vscode-api#TextDocument
-				//Range: https://code.visualstudio.com/api/references/vscode-api#Range
-				//WorkspaceEdit and applyEdit: https://code.visualstudio.com/api/references/vscode-api#WorkspaceEdit
-				//querySelector and addEventListener: https://developer.mozilla.org/en-US/docs/Web/API/EventTarget/addEventListener
 			}
     	});
 
@@ -346,9 +341,7 @@ class AnalysisViewProvider implements vscode.WebviewViewProvider {
 // Your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
 
-	dotenv.config({ path: path.join(context.extensionPath, '.env') });
-
-	
+	dotenv.config({ path: path.join(context.extensionPath, '.env') }); //put in process.env the API key
 
 	// Use the console to output diagnostic information (console.log) and errors (console.error)
 	// This line of code will only be executed once when your extension is activated
@@ -365,9 +358,6 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
 		vscode.window.registerWebviewViewProvider(AnalysisViewProvider.viewType, analysisProvider)
 	);
-
-
-
 
 	// The command has been defined in the package.json file
 	// Now provide the implementation of the command with registerCommand
