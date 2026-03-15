@@ -71,8 +71,8 @@ class DocumentationViewProvider implements vscode.WebviewViewProvider {
     		});
 		}
 
-		const htmlContent = sections.map(s => ` 																					<!-- each sections become a HTML string -->
-    	<details class="guideline-card" data-title="${s.title.toLowerCase()}">														<!-- data-title is an hidden attribute, toLowercase is useful for the search-bar -->
+		const htmlContent = sections.map(s => ` 		<!-- each sections become a HTML string -->
+    	<details class="guideline-card" data-title="${s.title.toLowerCase()}">		<!-- data-title is an hidden attribute, toLowercase is useful for the search-bar -->
         <summary class="guideline-header">${s.title}</summary>
         <div class="guideline-body">${s.html.replace(/<details[^>]*>[\s\S]*?<\/summary>/g, '').replace(/<\/details>/g, '')}</div> 
     	</details>		
@@ -131,10 +131,53 @@ class AnalysisViewProvider implements vscode.WebviewViewProvider {
 
 	public static readonly viewType = 'analysis';
 
+	// Decoration types for highlighting lines in the editor
+	private readonly _removedDecoration = vscode.window.createTextEditorDecorationType({
+		backgroundColor: 'rgba(255, 80, 80, 0.25)',
+		isWholeLine: true,
+		overviewRulerColor: 'rgba(255, 80, 80, 0.8)',
+		overviewRulerLane: vscode.OverviewRulerLane.Right,
+	});
+ 
+	private readonly _addedDecoration = vscode.window.createTextEditorDecorationType({
+		backgroundColor: 'rgba(80, 200, 80, 0.25)',
+		isWholeLine: true,
+		overviewRulerColor: 'rgba(80, 200, 80, 0.8)',
+		overviewRulerLane: vscode.OverviewRulerLane.Right,
+	});
+
 	constructor(
 		private readonly _extensionUri: vscode.Uri,
 		private readonly _context: vscode.ExtensionContext
 	) {}
+
+	// Clears all editor decorations
+	private clearDecorations() {
+		const editor = vscode.window.activeTextEditor;
+		if (editor) {
+			editor.setDecorations(this._removedDecoration, []);
+			editor.setDecorations(this._addedDecoration, []);
+		}
+	}
+
+	// Highlights the original lines red in the editor so the user can see what will be replaced
+	private highlightOriginal(original: string) {
+		const editor = vscode.window.activeTextEditor;
+		if (!editor) { return; }
+ 
+		const fullText = editor.document.getText();
+		const index = fullText.indexOf(original);
+		if (index === -1) { return; }
+ 
+		const startPos = editor.document.positionAt(index);
+		const endPos = editor.document.positionAt(index + original.length);
+		const range = new vscode.Range(startPos, endPos);
+ 
+		// Scroll the editor to make the highlighted region visible
+		editor.revealRange(range, vscode.TextEditorRevealType.InCenterIfOutsideViewport);
+		editor.setDecorations(this._removedDecoration, [range]);
+		editor.setDecorations(this._addedDecoration, []);
+	}
 
 	private async runGeminiAnalysis(webview: vscode.Webview) {
 		const apiKey = process.env.GEMINI_API_KEY;
@@ -160,7 +203,9 @@ class AnalysisViewProvider implements vscode.WebviewViewProvider {
         const response = await genAI.models.generateContent({
             model: 'gemini-3-flash-preview',
             contents: `You are an expert code assistant specialized in conversational web browsing.
-			You provide your suggestions based on the documentation provided and nothing else. You generate the analysis based on this format:
+			You provide your suggestions based on the documentation provided and nothing else. 
+			Make is so you can't generate two suggestions overlapping on the same lines.
+			You generate the analysis based on this format:
 			1. Title of the guideline violated
 			2. Rationale: explain why you are proposing this suggestion based on the guidelines present in the documentation
 			3. Suggestion: shown in a diff format
@@ -174,6 +219,10 @@ class AnalysisViewProvider implements vscode.WebviewViewProvider {
   				"suggested": "<the corrected version of those lines>"
 			}
 
+			CRITICAL: The "original" field must be copied character by character from the code below.
+			Do not paraphrase, reformat, or modify it in any way.
+			Preserve all whitespace, newlines, and indentation exactly as they appear.
+			If the original field does not match exactly, the tool will break.
 			If no violations are found, return an empty array: []
 
 			=== DOCUMENTATION ===
@@ -221,6 +270,21 @@ class AnalysisViewProvider implements vscode.WebviewViewProvider {
         	if (message.command === 'runAnalysis') {
             	await this.runGeminiAnalysis(webviewView.webview);
         	}
+
+			// Highlight the original lines red in the editor when the user hovers/clicks a card
+			if (message.command === 'highlightOriginal') {
+				const original = message.original
+				.replace(/\\n/g, '\n')
+				.replace(/\\t/g, '\t')
+				.replace(/ +/g, ' ');
+				this.highlightOriginal(original);
+			}
+
+			if (message.command === 'clearHighlight') {
+				this.clearDecorations();
+			}
+
+
 			if (message.command === 'acceptSuggestion') {         //Takes the open document in the editor and search "original" with indexOf
    				const editor = vscode.window.activeTextEditor;
     			if (!editor) { return; }
@@ -239,6 +303,25 @@ class AnalysisViewProvider implements vscode.WebviewViewProvider {
 				const edit = new vscode.WorkspaceEdit();
 				edit.replace(document.uri, range, message.suggested);
 				await vscode.workspace.applyEdit(edit);
+
+				// After applying, briefly highlight the newly inserted lines green,
+				// then clear all decorations so the editor goes back to normal.
+				const newStartPos = editor.document.positionAt(index);
+				const newEndPos = editor.document.positionAt(index + message.suggested.length);
+				const newRange = new vscode.Range(newStartPos, newEndPos);
+				editor.setDecorations(this._removedDecoration, []);
+				editor.setDecorations(this._addedDecoration, [newRange]);
+				editor.revealRange(newRange, vscode.TextEditorRevealType.InCenterIfOutsideViewport);
+ 
+				// Fade the green highlight out after 10 seconds
+				setTimeout(() => this.clearDecorations(), 10000);
+ 
+				// Tell the webview to hide the Accept button for this card
+				webviewView.webview.postMessage({ command: 'suggestionAccepted', cardId: message.cardId });
+
+
+
+
 				vscode.window.showInformationMessage('Substitution applied successfully!');
 			}
     	});
@@ -268,17 +351,36 @@ class AnalysisViewProvider implements vscode.WebviewViewProvider {
 
     <script>
     const vscode = acquireVsCodeApi();
+	let cardCounter = 0; // Counter to assign unique IDs to cards
+	let _analysisInterval; // Store the interval ID for the animated dots
 
     document.getElementById('run-analysis').addEventListener('click', () => {
-        document.getElementById('status').textContent = 'Running analysis, please wait...';
+        
         document.getElementById('results').innerHTML = '';
+
+		// Animated dots
+		let dots = 0;
+		const statusEl = document.getElementById('status');
+		statusEl.textContent = 'Running analysis, please wait.';
+		const interval = setInterval(() => {
+			dots = (dots + 1) % 3;
+			statusEl.textContent = 'Running analysis, please wait' + '.'.repeat(dots + 1);
+		}, 500);
+
+		// Store interval id so we can clear it when analysis finishes
+		_analysisInterval = interval;
+
         vscode.postMessage({ command: 'runAnalysis' });
     });
 
     window.addEventListener('message', event => {
         const message = event.data;
+
+		// Stop the dot animation whenever a response arrives
+    	clearInterval(_analysisInterval);
+		document.getElementById('status').textContent = '';
+
         if (message.command === 'analysisResult') {
-            document.getElementById('status').textContent = '';
             const results = document.getElementById('results');
 
             if (!message.violations || message.violations.length === 0) {  //if the message doesn't contain any violations or the size is zero
@@ -287,38 +389,65 @@ class AnalysisViewProvider implements vscode.WebviewViewProvider {
             }
 
             message.violations.forEach(v => {   //Build a card for each violation
+			    const cardId = 'card-' + (cardCounter++); // Unique ID for the card
                 const card = document.createElement('div');
                 card.className = 'violation-card';
+				card.id = cardId; // Set the ID of the card element
 
                 const removedLines = v.original.split('\\n')
-                    .map(line => '<span class="diff-removed">- ' + escHtml(line) + '</span>') 
+                    .map(line => '<span class="diff-removed"> ' + escHtml(line) + '</span>') 
                     .join('');
                 const addedLines = v.suggested.split('\\n')
-                    .map(line => '<span class="diff-added">+ ' + escHtml(line) + '</span>')
+                    .map(line => '<span class="diff-added"> ' + escHtml(line) + '</span>')
                     .join('');
 				//compose each card with title, rationale and diff
                 card.innerHTML =
+				'<div class="violation-label">Rule Violated</div>' +
    			    '<div class="violation-title">' + escHtml(v.title) + '</div>' +
     		    '<div class="violation-label">Rationale</div>' +
     			'<div class="violation-rationale">' + escHtml(v.rationale) + '</div>' +
     			'<div class="violation-label">Suggestion</div>' +
     			'<div class="diff-block">' + removedLines + addedLines + '</div>' +
-    			'<button class="accept-btn">Accept</button>';												//Button implementation
+    			'<button class="accept-btn">Accept</button>';		//Button implementation
 				results.appendChild(card);
-				card.querySelector('.accept-btn').addEventListener('click', () => {  						//querySelector finds the button inside each card
-    				vscode.postMessage({																	//sends a message to TypeScript with the command "acceptSuggestion"
+
+				card.addEventListener('mouseenter', () => {
+                    vscode.postMessage({ command: 'highlightOriginal', original: v.original });
+                });
+
+				card.addEventListener('mouseleave', () => {
+    				vscode.postMessage({ command: 'clearHighlight' });
+				});
+
+				card.querySelector('.accept-btn').addEventListener('click', (e) => {  		//querySelector finds the button inside each card
+				 	e.stopPropagation(); 	// prevent the card click from firing again
+    				vscode.postMessage({	//sends a message to TypeScript with the command "acceptSuggestion"
         				command: 'acceptSuggestion',
         				original: v.original,
-        				suggested: v.suggested
+        				suggested: v.suggested,
+						cardId: cardId
     				});
 				});
 			}); // chiude il forEach
+		
+		} else if (message.command === 'suggestionAccepted') {
+			// Hide the Accept button of the card that was just applied
+			const card = document.getElementById(message.cardId);
+			if (card) {
+				const btn = card.querySelector('.accept-btn');
+				if (btn) { btn.remove(); }
+				// Add a small "Applied" badge so the user knows it's done
+				const badge = document.createElement('span');
+				badge.className = 'accepted-badge';
+				badge.textContent = '✓ Applied';
+				card.appendChild(badge);
+			}
+		
 
-        } else if (message.command === 'analysisError') {
-            document.getElementById('status').textContent = '';
-            document.getElementById('results').textContent = 'Error: ' + message.error;
-        }
-    });
+		} else if (message.command === 'analysisError') {
+				document.getElementById('results').textContent = 'Error: ' + message.error;
+		}
+	});
 
     function escHtml(str) { //useful in order to substitute special characters into their safe equivalents
         return String(str)

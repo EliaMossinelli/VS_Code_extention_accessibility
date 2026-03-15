@@ -10,7 +10,6 @@ body {
     max-width: 800px;
     margin: 0 auto;
     background-color: rgb(25, 21, 36);
-    overflow: scroll;
     padding: 20px;
     border-radius: 6px;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
@@ -20,6 +19,18 @@ h1 {
     color: #ffffff;
     font-size: 18px;
     margin-bottom: 16px;
+}
+
+.accepted-badge {
+    display: inline-block;
+    margin-top: 6px;
+    padding: 4px 10px;
+    border-radius: 4px;
+    background-color: rgba(80, 200, 80, 0.2);
+    color: #6ddb6d;
+    font-size: 12px;
+    font-weight: bold;
+    border: 1px solid rgba(80, 200, 80, 0.4);
 }
 
 button {
@@ -58,28 +69,28 @@ button:focus {
 }
 
 .violation-card {
-    border: 1px solid #444;
-    border-radius: 6px;
+    border: 2px solid #444;
+    border-radius: 8px;
     margin-bottom: 12px;
     padding: 12px;
 }
 
 .violation-title {
     font-weight: bold;
-    font-size: 13px;
+    font-size: 14px;
     margin-bottom: 8px;
     color: #fafafa;
 }
 
 .violation-label {
-    font-size: 11px;
+    font-size: 12px;
     text-transform: uppercase;
     color: #aaaaaa;
-    margin-bottom: 2px;
+    margin-bottom: 4px;
 }
 
 .violation-rationale {
-    font-size: 12px;
+    font-size: 11px;
     line-height: 1.5;
     margin-bottom: 10px;
     color: #e7c4c4;
@@ -87,10 +98,10 @@ button:focus {
 
 .diff-block {
     font-family: monospace;
-    font-size: 12px;
+    font-size: 11px;
     white-space: pre-wrap;
     word-break: break-all;
-    border-radius: 4px;
+    /* border-radius: 1px; */
     overflow: hidden;
 }
 

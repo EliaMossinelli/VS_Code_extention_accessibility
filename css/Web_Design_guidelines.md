@@ -1,7 +1,5 @@
-<details open>
-  <summary>
-    <h3>1. Name functions as the user expects them</h3> 
-  </summary>
+### 1. Name functions as the user expects them 
+
 
   Common functions such as search, sign-in, log-out should use already established wording to provide users with a familiar experience.
 
@@ -24,11 +22,8 @@
 
   ```
 
-<details open> 
-  <summary> 
-    <h3 style="display:inline-block"> 2.	Users should be able to use different expressions and synonyms to mean the same thing. Relative statements like "today", "at the earliest time" are possibile 
-    </h3> 
-  </summary>
+### 2.	Users should be able to use different expressions and synonyms to mean the same thing. Relative statements like "today", "at the earliest time" are possibile 
+
 
 When referring to a link or item present in the page, users should be able to not use the exact phrasing to refer to a specific content. For example, in a list, users should be able to refer to items as “first item”, “second”, and so on. 
 
@@ -46,10 +41,8 @@ When referring to a link or item present in the page, users should be able to no
   <li cw-keys = "third item, third option"> guache workshop </li>
 </ul> 
 ```
-</details>
   
-<details open>
- <summary> <h3> 3.	Interpret visual components. The CA must translate page components that are only accessible through visual abilities by adapting and changing the way information is presented </h3> </summary>
+### 3.	Interpret visual components. The CA must translate page components that are only accessible through visual abilities by adapting and changing the way information is presented 
   
 When a visual component is present, such as an image, a graph, a table or a video, there should be an alternative way to programmatically present the visual component. When presenting images, it is important to distinguish between task-relevant images and decorative ones. Purely decorative images need not to be announced. Task-relevant images, like product pictures in an e-commerce, instead must have an alternative presentation usually in the form of alternative text.
 
@@ -178,7 +171,7 @@ When a visual component is present, such as an image, a graph, a table or a vide
     </table>    
     ```
 
-</details>
+
   
 ###  4.	Only present information relevant to the user based on the current context and task 
 Users should not be overloaded with information. To avoid cognitive overload, information should be provided only when contextually relevant. To achieve this, information should be organized and divided into logical units.
