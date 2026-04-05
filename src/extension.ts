@@ -11,10 +11,20 @@ import * as dotenv from 'dotenv';
 class DocumentationViewProvider implements vscode.WebviewViewProvider {
 
 	public static readonly viewType = 'documentation'; //type of the sidebar, same of what is written in the JSON
+	private _view?: vscode.WebviewView; //variable that contains the webview of the documentation, useful to update the content of the webview without reloading it
+
 
 	constructor(private readonly _extensionUri: vscode.Uri) {					  //extensionUri: route of the extension's folder, useful to find CSS and markdown
 		console.log('DocumentationViewProvider initialized with extension URI:'); //DEBUG
 	}
+
+	public revealGuideline(title: string) { //function that can be called from other parts of the code to update the content of the documentation view
+		if (this._view) {
+			this._view.show?.(true); // Show the view if it's not visible, but don't take focus
+			this._view.webview.postMessage({ command: 'revealGuideline', title: title.toLowerCase() }); //send a message to the webview to reveal the guideline with the given title
+		}
+	}
+
 
 	// This method is called when the webview view is resolved
 	public async resolveWebviewView(
@@ -22,6 +32,7 @@ class DocumentationViewProvider implements vscode.WebviewViewProvider {
 		_context: vscode.WebviewViewResolveContext,
 		_token: vscode.CancellationToken
 	) {
+		this._view = webviewView; //save the webview in the variable _view so it can be updated later
 		webviewView.webview.options = {
 			enableScripts: true,
 			localResourceRoots: [this._extensionUri]
@@ -99,6 +110,7 @@ class DocumentationViewProvider implements vscode.WebviewViewProvider {
         searchBar.addEventListener('input', () => {							//Listen the event input
             const query = searchBar.value.toLowerCase();					//the typed text is converted to lowercase
             const cards = document.querySelectorAll('.guideline-card');		//Takes the card of the HTML
+			console.log('revealGuideline ricevuto:', query);
             cards.forEach(card => {											
                 const title = card.getAttribute('data-title');				//Takes the title of the card
                 if (title.includes(query)) {								//if the title contains the input of the search-bar the card remains visible, otherwise is hidden
@@ -108,7 +120,37 @@ class DocumentationViewProvider implements vscode.WebviewViewProvider {
                 }
             });
         });
-    });
+
+	window.addEventListener('message', event => {	//Listen for messages from TypeScript
+		const message = event.data;
+		if (message.command === 'revealGuideline') {	//If the command is "revealGuideline", the card is opened
+			const query = message.title.trim().toLowerCase();	//the title is converted to lowercase and trim for safety
+			const cards = document.querySelectorAll('.guideline-card');
+
+			//resets the searchbar
+			document.getElementById('search-bar').value = '';
+			cards.forEach(card => { card.style.display = ''; }); //makes all the cards visible again
+			
+			cards.forEach(card => {
+				const title = card.getAttribute('data-title');
+				const queryWords = query.split(' ').filter(w => w.length > 0); //split the query in words, if title contains all the words of the query, the card is opened
+				const queryMatch = queryWords.every(word => title.includes(word)); //if all the query is contained in the title, match is true
+				if (title.includes(query) || query.includes(title) || queryMatch) {	
+					card.open = true;
+					card.scrollIntoView({ behavior: 'smooth', block: 'start' }); //scrolls the card
+					card.style.transition = '';
+
+					card.style.backgroundColor = 'rgba(255, 255, 0, 0.20)'; //highlight the card in yellow
+					setTimeout(() => { 
+						card.style.transition = 'background-color 1.5s ease'; //fade out the yellow highlight after 2 seconds
+						card.style.backgroundColor = ''; }, 2000); 
+				} else {
+					card.open = false;
+				} 
+			});
+		}
+	});
+	});
 	</script>
 
 	<body>
@@ -148,7 +190,8 @@ class AnalysisViewProvider implements vscode.WebviewViewProvider {
 
 	constructor(
 		private readonly _extensionUri: vscode.Uri,
-		private readonly _context: vscode.ExtensionContext
+		private readonly _context: vscode.ExtensionContext,
+		private readonly _docProvider: DocumentationViewProvider
 	) {}
 
 	// Clears all editor decorations
@@ -213,7 +256,7 @@ class AnalysisViewProvider implements vscode.WebviewViewProvider {
 			IMPORTANT: Respond with ONLY a valid JSON array — no markdown, no explanation, no code fences.
 			Each element must follow this exact schema:
 			{
-  				"title": "<title of the guideline violated>",
+  				"title": "<exact title of the guideline violated, as written in the documentation>",
   				"rationale": "<why this code violates the guideline>",
   				"original": "<the exact lines of code containing the violation>",
   				"suggested": "<the corrected version of those lines>"
@@ -274,14 +317,18 @@ class AnalysisViewProvider implements vscode.WebviewViewProvider {
 			// Highlight the original lines red in the editor when the user hovers/clicks a card
 			if (message.command === 'highlightOriginal') {
 				const original = message.original
-				.replace(/\\n/g, '\n')
-				.replace(/\\t/g, '\t')
-				.replace(/ +/g, ' ');
+				 .replace(/\\n/g, '\n') //replaces \n with real newlines
+				 .replace(/\\t/g, '\t') //replaces \t with real tabs
+				// .replace(/ +/g, ' '); //replaces multiple spaces with a single space (just in case)
 				this.highlightOriginal(original);
 			}
 
 			if (message.command === 'clearHighlight') {
 				this.clearDecorations();
+			}
+
+			if (message.command === 'revealGuideline') {
+				this._docProvider.revealGuideline(message.title);
 			}
 
 
@@ -395,21 +442,26 @@ class AnalysisViewProvider implements vscode.WebviewViewProvider {
 				card.id = cardId; // Set the ID of the card element
 
                 const removedLines = v.original.split('\\n')
-                    .map(line => '<span class="diff-removed"> ' + escHtml(line) + '</span>') 
+                    .map(line => '<span class="diff-removed">- ' + escHtml(line) + '</span>') 
                     .join('');
                 const addedLines = v.suggested.split('\\n')
-                    .map(line => '<span class="diff-added"> ' + escHtml(line) + '</span>')
+                    .map(line => '<span class="diff-added">+ ' + escHtml(line) + '</span>')
                     .join('');
 				//compose each card with title, rationale and diff
                 card.innerHTML =
 				'<div class="violation-label">Rule Violated</div>' +
-   			    '<div class="violation-title">' + escHtml(v.title) + '</div>' +
+   			    '<div class="violation-title" style="cursor: pointer; color: var(--vscode-textLink-foreground); text-decoration: underline;" title="Click to open documentation">' + escHtml(v.title) + '</div>' +
     		    '<div class="violation-label">Rationale</div>' +
     			'<div class="violation-rationale">' + escHtml(v.rationale) + '</div>' +
     			'<div class="violation-label">Suggestion</div>' +
     			'<div class="diff-block">' + removedLines + addedLines + '</div>' +
     			'<button class="accept-btn">Accept</button>';		//Button implementation
 				results.appendChild(card);
+
+				const titleElement = card.querySelector('.violation-title');
+				titleElement.addEventListener('click', () => {		//When the title is clicked, the documentation view is opened with the guideline related to the violation
+					vscode.postMessage({ command: 'revealGuideline', title: v.title });
+				});
 
 				card.addEventListener('mouseenter', () => {
                     vscode.postMessage({ command: 'highlightOriginal', original: v.original });
@@ -483,7 +535,7 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.window.registerWebviewViewProvider(DocumentationViewProvider.viewType, docProvider)
 	);
 
-	const analysisProvider = new AnalysisViewProvider(context.extensionUri, context);
+	const analysisProvider = new AnalysisViewProvider(context.extensionUri, context, docProvider);
 	context.subscriptions.push(
 		vscode.window.registerWebviewViewProvider(AnalysisViewProvider.viewType, analysisProvider)
 	);
